@@ -66,4 +66,27 @@ class AutoDeposit extends Model
         $queryString = http_build_query($params);
         return "{$baseUrl}/{$bankCode}-{$bankAccount}-compact2.jpg?{$queryString}";
     }
+
+    /**
+     * Generate SePay QR URL for personal accounts (no Merchant ID required)
+     */
+    public static function generateSepayQR(string $accountNumber, string $bankCode, ?float $amount = null, ?string $description = null): string
+    {
+        $baseUrl = 'https://qr.sepay.vn/img';
+        $params = [
+            'acc' => $accountNumber,
+            'bank' => $bankCode,
+        ];
+
+        if ($amount) {
+            $params['amount'] = $amount;
+        }
+
+        if ($description) {
+            $params['des'] = $description;
+        }
+
+        $queryString = http_build_query($params);
+        return "{$baseUrl}?{$queryString}";
+    }
 }

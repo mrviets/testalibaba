@@ -59,7 +59,7 @@ mysql_secure_installation
 echo "🗄️ Tạo database và user..."
 mysql -u root -p -e "
 CREATE DATABASE IF NOT EXISTS account_shop CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS 'account_shop'@'localhost' IDENTIFIED BY 'your_secure_password_here';
+CREATE USER IF NOT EXISTS 'account_shop'@'localhost' IDENTIFIED BY 'EY6xX3y8QvxCQgfyfvWQ';
 GRANT ALL PRIVILEGES ON account_shop.* TO 'account_shop'@'localhost';
 FLUSH PRIVILEGES;
 "

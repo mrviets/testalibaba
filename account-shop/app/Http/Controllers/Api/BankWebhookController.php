@@ -25,7 +25,7 @@ class BankWebhookController extends Controller
         // Verify signature (implement based on SePay docs)
         if (!$this->verifySepaySignature($request)) {
             Log::error('Invalid SePay webhook signature');
-            return response()->json(['status' => 'error', 'message' => 'Invalid signature'], 401);
+            return response()->json(['success' => false, 'message' => 'Invalid signature'], 401);
         }
 
         $data = $request->all();
@@ -38,21 +38,21 @@ class BankWebhookController extends Controller
 
         if (!$transactionId || !$amount || !$content) {
             Log::error('Missing required webhook data', ['data' => $data]);
-            return response()->json(['status' => 'error', 'message' => 'Missing data'], 400);
+            return response()->json(['success' => false, 'message' => 'Missing data'], 400);
         }
 
         // Idempotency check
         $existingDeposit = AutoDeposit::where('webhook_transaction_id', $transactionId)->first();
         if ($existingDeposit) {
             Log::info('Webhook already processed', ['transaction_id' => $transactionId]);
-            return response()->json(['status' => 'success', 'message' => 'Already processed'], 200);
+            return response()->json(['success' => true, 'message' => 'Already processed'], 200);
         }
 
         // Find matching deposit by reference code
         $referenceCode = $this->extractReferenceCode($content);
         if (!$referenceCode) {
             Log::error('No reference code found in content', ['content' => $content]);
-            return response()->json(['status' => 'error', 'message' => 'No reference code'], 400);
+            return response()->json(['success' => false, 'message' => 'No reference code'], 400);
         }
 
         $autoDeposit = AutoDeposit::where('reference_code', $referenceCode)
@@ -61,7 +61,7 @@ class BankWebhookController extends Controller
 
         if (!$autoDeposit) {
             Log::error('No matching deposit found', ['reference_code' => $referenceCode]);
-            return response()->json(['status' => 'error', 'message' => 'No matching deposit'], 404);
+            return response()->json(['success' => false, 'message' => 'No matching deposit'], 404);
         }
 
         // Verify amount matches (allow 1-2k difference for bank fees)
@@ -72,7 +72,7 @@ class BankWebhookController extends Controller
                 'received' => $amount,
                 'difference' => $amountDiff
             ]);
-            return response()->json(['status' => 'error', 'message' => 'Amount mismatch'], 400);
+            return response()->json(['success' => false, 'message' => 'Amount mismatch'], 400);
         }
 
         DB::beginTransaction();
@@ -109,7 +109,7 @@ class BankWebhookController extends Controller
                 'reference_code' => $referenceCode
             ]);
 
-            return response()->json(['status' => 'success', 'message' => 'Deposit processed'], 200);
+            return response()->json(['success' => true, 'message' => 'Deposit processed'], 200);
 
         } catch (\Exception $e) {
             DB::rollback();
@@ -118,7 +118,7 @@ class BankWebhookController extends Controller
                 'reference_code' => $referenceCode
             ]);
 
-            return response()->json(['status' => 'error', 'message' => 'Processing failed'], 500);
+            return response()->json(['success' => false, 'message' => 'Processing failed'], 500);
         }
     }
 
@@ -155,6 +155,6 @@ class BankWebhookController extends Controller
         // Check casso.vn docs for webhook format
         Log::info('Casso webhook received', ['data' => $request->all()]);
 
-        return response()->json(['status' => 'success'], 200);
+        return response()->json(['success' => true], 200);
     }
 }

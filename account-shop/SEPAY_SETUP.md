@@ -2,35 +2,34 @@
 
 ## 📋 **TỔNG QUAN**
 
-SePay là cổng thanh toán VietQR tự động cho phép người dùng nạp tiền thông qua quét mã QR hoặc chuyển khoản thủ công. Hệ thống sẽ tự động cộng tiền vào tài khoản người dùng sau khi nhận được webhook từ SePay.
+SePay là cổng thanh toán VietQR tự động cho phép người dùng nạp tiền thông qua quét mã QR hoặc chuyển khoản thủ công. Hệ thống hỗ trợ 2 phương pháp:
+
+1. **Tài khoản Merchant** (cần Merchant ID, API Key, Secret Key)
+2. **Tài khoản Cá nhân** (chỉ cần số tài khoản và mã ngân hàng)
 
 ---
 
-## 🚀 **BƯỚC 1: ĐĂNG KÝ TÀI KHOẢN SEPAY**
+## 🚀 **BƯỚC 1: CHỌN PHƯƠNG PHÁP**
 
-### **1.1 Truy cập website SePay**
+### **1.1 Tài khoản Merchant (Khuyến nghị cho Production)**
 - Website: https://sepay.vn
 - Đăng ký tài khoản merchant
+- Xác thực doanh nghiệp
+- Nhận API Key, Secret Key, Merchant ID
 
-### **1.2 Xác thực tài khoản**
-- Cung cấp thông tin doanh nghiệp
-- Upload giấy phép kinh doanh
-- Xác thực tài khoản ngân hàng
-
-### **1.3 Lấy thông tin API**
-Sau khi được duyệt, bạn sẽ nhận được:
-- **API Key**: Khóa API để gọi các endpoint
-- **Secret Key**: Khóa bí mật để xác thực webhook
-- **Merchant ID**: ID của merchant
+### **1.2 Tài khoản Cá nhân (Cho Development/Testing)**
+- Không cần đăng ký merchant
+- Chỉ cần số tài khoản ngân hàng và mã ngân hàng
+- QR code được tạo theo format: `https://qr.sepay.vn/img?acc=...&bank=...`
 
 ---
 
 ## ⚙️ **BƯỚC 2: CẤU HÌNH MÔI TRƯỜNG**
 
-### **2.1 Cập nhật file .env**
+### **2.1 Cấu hình cho Merchant Account**
 
 ```bash
-# SePay API Configuration
+# SePay API Configuration (Merchant)
 SEPAY_API_KEY=your_sepay_api_key_here
 SEPAY_SECRET_KEY=your_sepay_secret_key_here
 SEPAY_MERCHANT_ID=your_merchant_id_here
@@ -56,65 +55,101 @@ DEPOSIT_EXPIRATION_MINUTES=15
 AMOUNT_TOLERANCE=2000
 ```
 
-### **2.2 Cấu hình cho môi trường production**
+### **2.2 Cấu hình cho Personal Account**
 
 ```bash
-# Production .env
-APP_ENV=production
-APP_DEBUG=false
-APP_URL=https://api.dinhquocviet.space
+# SePay Personal Account Configuration
+BANK_ACCOUNT_NUMBER=1234567890
+BANK_ACCOUNT_NAME=ACCOUNT SHOP
+BANK_CODE=970422
 
-# SePay Production URLs
+# Webhook Configuration (vẫn cần cho personal account)
 SEPAY_WEBHOOK_URL=https://api.dinhquocviet.space/api/sepay/webhook
+
+# Frontend URL
 FRONTEND_URL=https://dinhquocviet.space
+
+# Security Configuration
+DEPOSIT_RATE_LIMIT=5
+DEPOSIT_RATE_LIMIT_WINDOW=3600
+MIN_DEPOSIT_AMOUNT=10000
+MAX_DEPOSIT_AMOUNT=50000000
+DEPOSIT_EXPIRATION_MINUTES=15
+AMOUNT_TOLERANCE=2000
 ```
 
 ---
 
-## 🔧 **BƯỚC 3: KIỂM TRA KẾT NỐI**
+## 🔧 **BƯỚC 3: SỬ DỤNG API**
 
-### **3.1 Chạy command test**
+### **3.1 Merchant Account API**
 
 ```bash
-# Test kết nối SePay API
-php artisan sepay:test
+# Tạo deposit với Merchant account
+POST /api/sepay/deposit
+{
+    "amount": 100000
+}
 
-# Test với số tiền cụ thể
-php artisan sepay:test --amount=50000
+# Response
+{
+    "status": "success",
+    "data": {
+        "qr_code_url": "https://api.sepay.vn/qr/...",
+        "reference_code": "NAP123T1234567890R1234"
+    }
+}
 ```
 
-### **3.2 Kiểm tra logs**
+### **3.2 Personal Account API**
 
 ```bash
-# Xem logs SePay
-tail -f storage/logs/laravel.log | grep -i sepay
+# Tạo deposit với Personal account
+POST /api/sepay/deposit-personal
+{
+    "amount": 100000
+}
+
+# Response
+{
+    "status": "success",
+    "data": {
+        "qr_code_url": "https://qr.sepay.vn/img?acc=1234567890&bank=970422&amount=100000&des=NAP123T1234567890R1234",
+        "reference_code": "NAP123T1234567890R1234"
+    }
+}
 ```
 
 ---
 
 ## 🌐 **BƯỚC 4: CẤU HÌNH WEBHOOK**
 
-### **4.1 Cấu hình webhook URL trong SePay Dashboard**
+### **4.1 Webhook URL**
+Cả hai phương pháp đều sử dụng cùng webhook endpoint:
+```
+https://api.dinhquocviet.space/api/sepay/webhook
+```
 
-1. Đăng nhập vào SePay Dashboard
-2. Vào phần **Webhook Settings**
-3. Cấu hình webhook URL: `https://api.dinhquocviet.space/api/sepay/webhook`
-4. Chọn events: `payment.success`
-5. Lưu cấu hình
+### **4.2 Webhook Payload Format**
+SePay gửi webhook với format:
+```json
+{
+    "id": "transaction_123",
+    "amount": 100000,
+    "reference": "NAP123T1234567890R1234",
+    "status": "success",
+    "bank_code": "970422",
+    "account_number": "1234567890"
+}
+```
 
-### **4.2 Test webhook**
-
-```bash
-# Tạo test webhook
-curl -X POST https://api.dinhquocviet.space/api/sepay/webhook \
-  -H "Content-Type: application/json" \
-  -H "X-SePay-Signature: test_signature" \
-  -d '{
-    "transaction_id": "test_123",
-    "amount": 10000,
-    "reference": "TEST123",
-    "status": "success"
-  }'
+### **4.3 Response Format**
+Backend phải trả về đúng format SePay yêu cầu:
+```json
+{
+    "success": true,
+    "message": "Deposit processed"
+}
 ```
 
 ---
@@ -125,13 +160,13 @@ curl -X POST https://api.dinhquocviet.space/api/sepay/webhook \
 - Bắt buộc có SSL certificate cho webhook URL
 - SePay chỉ gửi webhook qua HTTPS
 
-### **5.2 IP Whitelist (Tùy chọn)**
-- Cấu hình IP whitelist trong SePay Dashboard
-- Chỉ cho phép webhook từ IP của SePay
-
-### **5.3 Signature Verification**
-- Hệ thống đã tự động verify signature
+### **5.2 Signature Verification (Merchant Account)**
+- Hệ thống tự động verify signature với Secret Key
 - Không cần cấu hình thêm
+
+### **5.3 Idempotency**
+- Hệ thống tự động check trùng lặp theo transaction ID
+- Đảm bảo không xử lý webhook trùng lặp
 
 ---
 
@@ -146,28 +181,23 @@ tail -f storage/logs/laravel.log
 grep "SePay" storage/logs/laravel.log
 ```
 
-### **6.2 Database Monitoring**
-```sql
--- Xem các giao dịch SePay
-SELECT * FROM auto_deposits WHERE webhook_data IS NOT NULL;
+### **6.2 Test Commands**
+```bash
+# Test Merchant account
+php artisan sepay:test --amount=10000
 
--- Xem thống kê theo ngày
-SELECT 
-    DATE(created_at) as date,
-    COUNT(*) as total_deposits,
-    SUM(amount) as total_amount,
-    COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_deposits
-FROM auto_deposits 
-WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-GROUP BY DATE(created_at)
-ORDER BY date DESC;
+# Test Personal account (manual)
+curl -X POST https://api.dinhquocviet.space/api/sepay/deposit-personal \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"amount": 10000}'
 ```
 
 ---
 
 ## 🚨 **XỬ LÝ LỖI THƯỜNG GẶP**
 
-### **Lỗi 1: "Invalid signature"**
+### **Lỗi 1: "Invalid signature" (Merchant Account)**
 ```bash
 # Kiểm tra secret key
 echo $SEPAY_SECRET_KEY
@@ -176,31 +206,19 @@ echo $SEPAY_SECRET_KEY
 tail -f storage/logs/laravel.log | grep "webhook received"
 ```
 
-### **Lỗi 2: "API connection failed"**
+### **Lỗi 2: "QR code not working" (Personal Account)**
 ```bash
-# Kiểm tra API key
-echo $SEPAY_API_KEY
+# Kiểm tra bank code
+echo $BANK_CODE
 
-# Test API connection
-php artisan sepay:test
+# Test QR URL
+curl -I "https://qr.sepay.vn/img?acc=1234567890&bank=970422&amount=10000"
 ```
 
-### **Lỗi 3: "Amount mismatch"**
+### **Lỗi 3: "Response format error"**
 ```bash
-# Kiểm tra amount tolerance
-echo $AMOUNT_TOLERANCE
-
-# Xem webhook data
-tail -f storage/logs/laravel.log | grep "Amount mismatch"
-```
-
-### **Lỗi 4: "No matching deposit found"**
-```bash
-# Kiểm tra reference code
-SELECT * FROM auto_deposits WHERE reference_code = 'REFERENCE_CODE';
-
-# Xem webhook data
-tail -f storage/logs/laravel.log | grep "No matching deposit"
+# Kiểm tra webhook response
+tail -f storage/logs/laravel.log | grep "webhook response"
 ```
 
 ---
@@ -209,7 +227,6 @@ tail -f storage/logs/laravel.log | grep "No matching deposit"
 
 ### **SePay Support**
 - Email: support@sepay.vn
-- Hotline: 1900-xxxx
 - Documentation: https://docs.sepay.vn
 
 ### **Technical Issues**
@@ -221,12 +238,21 @@ tail -f storage/logs/laravel.log | grep "No matching deposit"
 
 ## ✅ **CHECKLIST TRIỂN KHAI**
 
+### **Merchant Account:**
 - [ ] Đăng ký tài khoản SePay merchant
 - [ ] Nhận API Key, Secret Key, Merchant ID
 - [ ] Cấu hình biến môi trường trong .env
 - [ ] Test kết nối API: `php artisan sepay:test`
 - [ ] Cấu hình webhook URL trong SePay Dashboard
 - [ ] Test webhook signature verification
+
+### **Personal Account:**
+- [ ] Cấu hình BANK_ACCOUNT_NUMBER và BANK_CODE
+- [ ] Test QR code generation
+- [ ] Cấu hình webhook URL (nếu có)
+- [ ] Test end-to-end flow
+
+### **Chung:**
 - [ ] Cấu hình SSL certificate cho production
 - [ ] Monitor logs và database
 - [ ] Test end-to-end flow với số tiền nhỏ
@@ -235,26 +261,18 @@ tail -f storage/logs/laravel.log | grep "No matching deposit"
 
 ## 🔄 **LUỒNG HOẠT ĐỘNG**
 
-1. **User tạo lệnh nạp tiền**
-   - Frontend gọi API: `POST /api/sepay/deposit`
-   - Backend tạo record trong `auto_deposits`
-   - Gọi SePay API để tạo QR code
-   - Trả về QR code URL cho user
+### **Merchant Account:**
+1. User tạo lệnh nạp tiền → Backend gọi SePay API → Tạo QR code
+2. User quét QR → SePay xử lý → Gửi webhook → Backend cộng tiền
 
-2. **User thanh toán**
-   - User quét QR code hoặc chuyển khoản thủ công
-   - SePay xử lý thanh toán
-   - SePay gửi webhook đến backend
+### **Personal Account:**
+1. User tạo lệnh nạp tiền → Backend tạo QR URL → Hiển thị QR
+2. User quét QR → Chuyển khoản thủ công → Backend check status → Cộng tiền
 
-3. **Backend xử lý webhook**
-   - Verify signature
-   - Tìm deposit record theo reference code
-   - Verify amount
-   - Cộng tiền vào tài khoản user
-   - Tạo transaction record
-   - Cập nhật trạng thái deposit
-
-4. **User nhận thông báo**
-   - Frontend poll trạng thái: `GET /api/sepay/deposit/{id}/status`
-   - Hiển thị thông báo thành công
-   - Cập nhật số dư tài khoản
+### **Webhook Processing (Chung):**
+1. SePay gửi webhook với payload JSON
+2. Backend verify signature (nếu có)
+3. Check idempotency theo transaction ID
+4. Tìm deposit record theo reference code
+5. Verify amount và cộng tiền
+6. Trả về `{"success": true}` với HTTP 200

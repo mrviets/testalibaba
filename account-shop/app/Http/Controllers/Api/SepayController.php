@@ -186,13 +186,13 @@ class SepayController extends Controller
                 'received_signature' => $request->header('X-SePay-Signature'),
                 'payload' => $request->getContent(),
             ]);
-            return response()->json(['status' => 'error', 'message' => 'Invalid signature'], 401);
+            return response()->json(['success' => false, 'message' => 'Invalid signature'], 401);
         }
 
         $data = $request->all();
 
         // Extract transaction info
-        $transactionId = $data['transaction_id'] ?? null;
+        $transactionId = $data['id'] ?? $data['transaction_id'] ?? null; // Support both formats
         $amount = $data['amount'] ?? 0;
         $reference = $data['reference'] ?? '';
         $status = $data['status'] ?? '';
@@ -210,14 +210,14 @@ class SepayController extends Controller
 
         if (!$transactionId || !$amount || !$reference || $status !== 'success') {
             Log::error('Invalid webhook data', ['data' => $data]);
-            return response()->json(['status' => 'error', 'message' => 'Invalid data'], 400);
+            return response()->json(['success' => false, 'message' => 'Invalid data'], 400);
         }
 
         // Idempotency check
         $existingDeposit = AutoDeposit::where('webhook_transaction_id', $transactionId)->first();
         if ($existingDeposit) {
             Log::info('Webhook already processed', ['transaction_id' => $transactionId]);
-            return response()->json(['status' => 'success', 'message' => 'Already processed'], 200);
+            return response()->json(['success' => true, 'message' => 'Already processed'], 200);
         }
 
         // Find matching deposit
@@ -227,7 +227,7 @@ class SepayController extends Controller
 
         if (!$autoDeposit) {
             Log::error('No matching deposit found', ['reference' => $reference]);
-            return response()->json(['status' => 'error', 'message' => 'No matching deposit'], 404);
+            return response()->json(['success' => false, 'message' => 'No matching deposit'], 404);
         }
 
         // Verify amount (allow 1-2k difference for bank fees)
@@ -238,7 +238,7 @@ class SepayController extends Controller
                 'received' => $amount,
                 'difference' => $amountDiff
             ]);
-            return response()->json(['status' => 'error', 'message' => 'Amount mismatch'], 400);
+            return response()->json(['success' => false, 'message' => 'Amount mismatch'], 400);
         }
 
         DB::beginTransaction();
@@ -276,7 +276,7 @@ class SepayController extends Controller
                 'transaction_id' => $transactionId,
             ]);
 
-            return response()->json(['status' => 'success', 'message' => 'Deposit processed'], 200);
+            return response()->json(['success' => true, 'message' => 'Deposit processed'], 200);
 
         } catch (\Exception $e) {
             DB::rollback();
@@ -286,7 +286,7 @@ class SepayController extends Controller
                 'reference' => $reference
             ]);
 
-            return response()->json(['status' => 'error', 'message' => 'Processing failed'], 500);
+            return response()->json(['success' => false, 'message' => 'Processing failed'], 500);
         }
     }
 
@@ -382,6 +382,126 @@ class SepayController extends Controller
             'status' => 'success',
             'data' => $deposits
         ]);
+    }
+
+    /**
+     * Generate SePay QR URL for personal accounts (no Merchant ID required)
+     */
+    public static function generateSepayQR(string $accountNumber, string $bankCode, ?float $amount = null, ?string $description = null): string
+    {
+        $baseUrl = 'https://qr.sepay.vn/img';
+        $params = [
+            'acc' => $accountNumber,
+            'bank' => $bankCode,
+        ];
+
+        if ($amount) {
+            $params['amount'] = $amount;
+        }
+
+        if ($description) {
+            $params['des'] = $description;
+        }
+
+        $queryString = http_build_query($params);
+        return "{$baseUrl}?{$queryString}";
+    }
+
+    /**
+     * Create deposit with SePay QR (personal account method)
+     */
+    public function createDepositPersonal(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'amount' => 'required|numeric|min:10000|max:50000000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Số tiền không hợp lệ. Tối thiểu 10,000 VNĐ',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $user = $request->user();
+        $amount = $request->amount;
+
+        // Kiểm tra rate limit
+        $recentDeposits = AutoDeposit::where('user_id', $user->id)
+            ->where('created_at', '>=', now()->subHour())
+            ->count();
+
+        if ($recentDeposits >= 5) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Bạn đã nạp quá nhiều lần trong 1 giờ. Vui lòng thử lại sau.'
+            ], 429);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            // Tạo reference code
+            $referenceCode = 'NAP' . $user->id . 'T' . time() . 'R' . rand(1000, 9999);
+
+            // Tạo lệnh nạp tiền trong database
+            $autoDeposit = AutoDeposit::create([
+                'user_id' => $user->id,
+                'reference_code' => $referenceCode,
+                'amount' => $amount,
+                'bank_account' => env('BANK_ACCOUNT_NUMBER'),
+                'expires_at' => now()->addMinutes(15),
+                'status' => 'pending',
+            ]);
+
+            // Tạo SePay QR URL (personal account method)
+            $qrUrl = self::generateSepayQR(
+                env('BANK_ACCOUNT_NUMBER'),
+                env('BANK_CODE', '970422'),
+                $amount,
+                $referenceCode
+            );
+
+            $autoDeposit->update([
+                'qr_code_url' => $qrUrl,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Tạo lệnh nạp tiền thành công',
+                'data' => [
+                    'id' => $autoDeposit->id,
+                    'reference_code' => $autoDeposit->reference_code,
+                    'amount' => $autoDeposit->amount,
+                    'bank_account' => $autoDeposit->bank_account,
+                    'qr_code_url' => $autoDeposit->qr_code_url,
+                    'expires_at' => $autoDeposit->expires_at,
+                    'instructions' => [
+                        'Quét mã QR để nạp tiền',
+                        'STK: ' . $autoDeposit->bank_account,
+                        'Số tiền: ' . number_format($amount) . ' VNĐ',
+                        'Nội dung: ' . $autoDeposit->reference_code,
+                        'Lệnh hết hạn sau 15 phút'
+                    ]
+                ]
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollback();
+            Log::error('Error creating SePay deposit (personal)', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $user->id
+            ]);
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Có lỗi xảy ra khi tạo lệnh nạp tiền'
+            ], 500);
+        }
     }
 }
 

@@ -37,6 +37,7 @@ Route::post('bank/casso-webhook', [BankWebhookController::class, 'cassoWebhook']
 // SePay Integration Routes
 Route::post('sepay/webhook', [SepayController::class, 'webhook']);
 Route::post('sepay/deposit', [SepayController::class, 'createDeposit']);
+Route::post('sepay/deposit-personal', [SepayController::class, 'createDepositPersonal']);
 Route::get('sepay/deposit/{id}/status', [SepayController::class, 'checkStatus']);
 Route::get('sepay/transactions', [SepayController::class, 'getTransactionHistory']);
 

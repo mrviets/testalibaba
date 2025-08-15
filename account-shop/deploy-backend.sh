@@ -14,7 +14,7 @@ echo "⚙️ Tạo file .env production..."
 cat > .env << 'EOF'
 APP_NAME="Account Shop"
 APP_ENV=production
-APP_KEY=base64:4dUWfFT9QPLFz5MpLhgAOoYrlxf6tAjthSLRSJvECCo=
+APP_KEY=
 APP_DEBUG=false
 APP_URL=https://api.dinhquocviet.space
 
@@ -27,7 +27,7 @@ DB_HOST=localhost
 DB_PORT=3306
 DB_DATABASE=account_shop
 DB_USERNAME=account_shop
-DB_PASSWORD=your_secure_password_here
+DB_PASSWORD=EY6xX3y8QvxCQgfyfvWQ
 
 BROADCAST_DRIVER=log
 CACHE_DRIVER=file
@@ -51,21 +51,19 @@ MAIL_ENCRYPTION=tls
 MAIL_FROM_ADDRESS="noreply@dinhquocviet.space"
 MAIL_FROM_NAME="Account Shop"
 
-# SePay Configuration
-SEPAY_API_KEY=your_sepay_api_key_here
-SEPAY_SECRET_KEY=your_sepay_secret_key_here
-SEPAY_MERCHANT_ID=your_merchant_id_here
-SEPAY_BASE_URL=https://api.sepay.vn/v1
+# Webhook Configuration (vẫn cần cho personal account)
+
 SEPAY_WEBHOOK_URL=https://api.dinhquocviet.space/api/sepay/webhook
 
-# Bank Account Configuration
-BANK_ACCOUNT_NUMBER=1234567890
-BANK_ACCOUNT_NAME=ACCOUNT SHOP
-BANK_CODE=970422
+# SePay Personal Account Configuration
+BANK_ACCOUNT_NUMBER=86853888888
+BANK_ACCOUNT_NAME="DINH QUOC VIET"
+BANK_CODE=970423
 
 # Frontend URL
 FRONTEND_URL=https://dinhquocviet.space
 
+# Security Configuration
 # Security Configuration
 DEPOSIT_RATE_LIMIT=5
 DEPOSIT_RATE_LIMIT_WINDOW=3600
